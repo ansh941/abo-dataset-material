@@ -23,7 +23,27 @@ def seed_everything(seed):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
-def train():
+def visualize(render_view_img, base_color_img, normal_img, metallic_roughness_img, mask_img, base_color_pred, normal_pred, metallic_pred, roughness_pred, mean, std):
+    render_view_img = (render_view_img * std + mean).detach().cpu().numpy().transpose(0,2,3,1)[0]*255
+    base_color_img = base_color_img.detach().cpu().numpy().transpose(0,2,3,1)[0]*255
+    normal_img = normal_img.detach().cpu().numpy().transpose(0,2,3,1)[0]*255
+    metallic_img = cv2.cvtColor(metallic_roughness_img[:,2:3].detach().cpu().numpy().transpose(0,2,3,1)[0]*255, cv2.COLOR_GRAY2BGR)
+    roughness_img = cv2.cvtColor(metallic_roughness_img[:,1:2].detach().cpu().numpy().transpose(0,2,3,1)[0]*255, cv2.COLOR_GRAY2BGR)
+    
+    base_color_pred = base_color_pred.detach().cpu().numpy().transpose(0,2,3,1)[0]*255
+    normal_pred = normal_pred.detach().cpu().numpy().transpose(0,2,3,1)[0]*255
+    metallic_pred = metallic_pred.detach().cpu().numpy().transpose(0,2,3,1)[0]*255
+    roughness_pred = roughness_pred.detach().cpu().numpy().transpose(0,2,3,1)[0]*255
+    
+    base_color_img = np.concatenate([render_view_img[..., ::-1], base_color_pred[..., ::-1], base_color_img[..., ::-1]], axis=1)
+    normal_img = np.concatenate([render_view_img[..., ::-1], normal_pred[..., ::-1], normal_img[..., ::-1]], axis=1)
+    metallic_img = np.concatenate([render_view_img[..., ::-1], cv2.cvtColor(metallic_pred, cv2.COLOR_GRAY2BGR), metallic_img[..., ::-1]], axis=1)
+    roughness_img = np.concatenate([render_view_img[..., ::-1], cv2.cvtColor(roughness_pred, cv2.COLOR_GRAY2BGR), roughness_img[..., ::-1]], axis=1)
+    
+    img = np.concatenate([base_color_img, normal_img, metallic_img, roughness_img], axis=0)
+    cv2.imwrite('test.jpg', img)
+
+def train(vis=False):
     # Set seed
     seed_everything(42)
     
@@ -31,7 +51,7 @@ def train():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     # Set hyperparameters
-    batch_size = 16
+    batch_size = 4
     num_epochs = 100
     learning_rate = 0.001
     
@@ -75,18 +95,26 @@ def train():
             base_color_img = base_color_img*mask_img
             
             # Forward pass
-            base_color_pred = model(render_view_img)
+            base_color_pred, normal_pred, metallic_pred, roughness_pred = model(render_view_img)
             base_color_pred = F.interpolate(base_color_pred, size=(512, 512), mode='bilinear', align_corners=False)
+            normal_pred = F.interpolate(normal_pred, size=(512, 512), mode='bilinear', align_corners=False)
+            metallic_pred = F.interpolate(metallic_pred, size=(512, 512), mode='bilinear', align_corners=False)
+            roughness_pred = F.interpolate(roughness_pred, size=(512, 512), mode='bilinear', align_corners=False)
 
             # Compute loss
-            loss = criterion(base_color_pred, base_color_img)
+            base_color_loss = criterion(base_color_pred, base_color_img)
+            normal_loss = criterion(normal_pred, normal_img)
+            metallic_loss = criterion(metallic_pred, metallic_roughness_img[:, 0:1])
+            roughness_loss = criterion(roughness_pred, metallic_roughness_img[:, 1:2])
+            
+            loss = (base_color_loss + normal_loss + metallic_loss + roughness_loss)/4
             loss.backward()
-            print(loss.item())  
             optimizer.step()
             
-            render_view_img = (render_view_img * std + mean).detach().cpu().numpy().transpose(0,2,3,1)[0]*255
-            base_color_pred = base_color_pred.detach().cpu().numpy().transpose(0,2,3,1)[0]*255
-            base_color_img = base_color_img.detach().cpu().numpy().transpose(0,2,3,1)[0]*255
-            img = np.concatenate([render_view_img[..., ::-1], base_color_pred[..., ::-1], base_color_img[..., ::-1]], axis=1)
-            cv2.imwrite('test.jpg', img)
-print(train())
+            # Visualization
+            if vis:
+                visualize(render_view_img, base_color_img, normal_img, metallic_roughness_img,
+                        mask_img, base_color_pred, normal_pred, metallic_pred, roughness_pred,
+                        mean, std)
+
+train(True)
