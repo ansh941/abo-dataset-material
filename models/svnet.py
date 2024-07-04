@@ -45,7 +45,7 @@ class DecoderBlock(nn.Module):
         x = torch.cat([x, skip], dim=1)
         x = self.conv_block(x)
         return x
-        
+
 class ResNet34(nn.Module):
     def __init__(self, activation_function: nn.Module):
         super(ResNet34, self).__init__()
@@ -130,7 +130,7 @@ class SVNetEncoder(nn.Module):
         return encoder_feat0, encoder_feat1, encoder_feat2, encoder_feat3, encoder_feat4, encoder_feat5
 
 class SVNetDecoder(nn.Module):
-    def __init__(self, activation_function: nn.Module):
+    def __init__(self, activation_function: nn.Module, final_output_channel=3):
         super(SVNetDecoder, self).__init__()
         self.decoder_conv_block5 = DoubleConv(activation_function, 512, 512, 256, 3, 1, 0)
         self.decoder_conv_block4 = DecoderBlock(activation_function, 512, 512, 128, 3, 1, 0)
@@ -138,7 +138,7 @@ class SVNetDecoder(nn.Module):
         self.decoder_conv_block2 = DecoderBlock(activation_function, 128, 128, 64, 3, 1, 0)
         self.decoder_conv_block1 = DecoderBlock(activation_function, 128, 128, 64, 3, 1, 0)
         self.decoder_conv_block0 = DecoderBlock(activation_function, 128, 64, 64, 3, 1, 0)
-        self.conv_out = nn.Conv2d(64, 3, 3, 1, 0)
+        self.conv_out = nn.Conv2d(64, final_output_channel, 3, 1, 0)
     
     def forward(self, encoder_feats:List[torch.Tensor]):
         encoder_feat0, encoder_feat1, encoder_feat2, encoder_feat3, encoder_feat4, encoder_feat5 = encoder_feats
@@ -153,25 +153,33 @@ class SVNetDecoder(nn.Module):
         
         out = F.sigmoid(out)
         return out
-    
-    
+
+
 class SVNet(nn.Module):
     def __init__(self, activation='relu'):
         super(SVNet, self).__init__()
         activation_function = nn.LeakyReLU if activation == 'relu' else nn.GELU
-        
+
         self.svnet_encoder = SVNetEncoder(activation_function)
-        self.svnet_decoder = SVNetDecoder(activation_function)
-            
+        self.base_color_decoder = SVNetDecoder(activation_function, final_output_channel=3)
+        self.normal_decoder = SVNetDecoder(activation_function, final_output_channel=3)
+        self.metallic_decoder = SVNetDecoder(activation_function, final_output_channel=1)
+        self.roughness_decoder = SVNetDecoder(activation_function, final_output_channel=1)
+
     def forward(self, x):
         encoder_feats = self.svnet_encoder(x)
-        out = self.svnet_decoder(encoder_feats)
-        return out
+
+        base_color = self.base_color_decoder(encoder_feats)
+        normal = self.normal_decoder(encoder_feats)
+        metallic = self.metallic_decoder(encoder_feats)
+        roughness = self.roughness_decoder(encoder_feats)
+
+        return base_color, normal, metallic, roughness
 
 if __name__ == '__main__':
     svnet = SVNet().cuda()
 
     dummy_input = torch.randn(1, 3, 512, 512).cuda()
 
-    out:torch.Tensor = svnet(dummy_input)
-    print(out.size())
+    base_color, normal, metallic, roughness = svnet(dummy_input)
+    print(base_color.size(), normal.size(), metallic.size(), roughness.size())

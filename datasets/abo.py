@@ -1,6 +1,7 @@
 import os
 import json
 
+import tqdm
 import numpy as np
 import pandas as pd
 
@@ -15,6 +16,24 @@ import torchvision.transforms as transforms
 import cv2
 from PIL import Image
 
+def create_hdr_image_list(root_dir):
+    hdr_image_list = []
+    for model_id in tqdm.tqdm(os.listdir(root_dir)):
+        if os.path.isdir(os.path.join(root_dir, model_id)):
+            print(f'Processing {model_id}')
+            with open(os.path.join(root_dir, model_id, 'metadata.json'), 'r') as f:
+                metadata = json.load(f)
+            
+
+            hdr_image_list.extend(metadata['envs'])
+    hdr_image_list = list(set(hdr_image_list))
+    
+    return hdr_image_list
+
+def download_hdr_images(hdr_image_list):
+    url_root = 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/'
+    for hdr_image in tqdm.tqdm(hdr_image_list):
+        os.system(f'wget -P {os.path.join('.', 'env_maps')} {url_root}{hdr_image}')
 class SVABOMaterialDataset(Dataset):
     def __init__(self, root_dir, image_transform=None, label_transform=None, train=True):
         self.root_dir = root_dir
@@ -69,7 +88,9 @@ class SVABOMaterialDataset(Dataset):
 
 if __name__ == '__main__':
     root_dir = '../../datasets/abo-benchmark-material'
-    
+    hdr_image_list = create_hdr_image_list(root_dir)
+    download_hdr_images(hdr_image_list)
+    '''
     image_transform = transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
@@ -89,5 +110,4 @@ if __name__ == '__main__':
         render_view_img, base_color_img, normal_img, metallic_roughness_img = data
         print(render_view_img.shape, base_color_img.shape, normal_img.shape, metallic_roughness_img.shape)
         break
-    
-    
+    '''
