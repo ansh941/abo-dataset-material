@@ -44,11 +44,11 @@ def visualize(render_view, base_color, normal, metallic, roughness, mask, recon_
     recon_view_pred = recon_view_pred.detach().cpu().numpy().transpose(0,2,3,1)[0]*255
     
     render_view = render_view[..., ::-1]
-    base_color = np.concatenate([render_view, base_color_pred[..., ::-1], base_color[..., ::-1]], axis=1)
-    normal = np.concatenate([render_view, normal_pred[..., ::-1], normal[..., ::-1]], axis=1)
-    metallic = np.concatenate([render_view, cv2.cvtColor(metallic_pred, cv2.COLOR_GRAY2BGR), metallic[..., ::-1]], axis=1)
-    roughness = np.concatenate([render_view, cv2.cvtColor(roughness_pred, cv2.COLOR_GRAY2BGR), roughness[..., ::-1]], axis=1)
-    recon_view = np.concatenate([render_view, recon_view_pred[..., ::-1], recon_view[..., ::-1]], axis=1)
+    base_color = np.concatenate([render_view, base_color_pred, base_color], axis=1)
+    normal = np.concatenate([render_view, normal_pred, normal], axis=1)
+    metallic = np.concatenate([render_view, cv2.cvtColor(metallic_pred, cv2.COLOR_GRAY2BGR), metallic], axis=1)
+    roughness = np.concatenate([render_view, cv2.cvtColor(roughness_pred, cv2.COLOR_GRAY2BGR), roughness], axis=1)
+    recon_view = np.concatenate([render_view, recon_view_pred, recon_view], axis=1)
     
     img = np.concatenate([base_color, normal, metallic, roughness, recon_view], axis=0)
     cv2.imwrite('test.jpg', img)
