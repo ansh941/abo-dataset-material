@@ -16,6 +16,8 @@ import torchvision.transforms as transforms
 import cv2
 from PIL import Image
 
+from rendering_test import render
+
 def create_hdr_image_list(root_dir):
     hdr_image_list = []
     for model_id in tqdm.tqdm(os.listdir(root_dir)):
@@ -62,30 +64,46 @@ class SVABOMaterialDataset(Dataset):
                     self.normal_images.append(os.path.join(self.root_dir, model_id, 'normal', f'normal_{render_view_id}.png'))
                     self.metallic_roughness_images.append(os.path.join(self.root_dir, model_id, 'metallic_roughness', f'metallic_roughness_{render_view_id}.jpg'))
                     self.mask_images.append(os.path.join(self.root_dir, model_id, 'segmentation', f'segmentation_{render_view_id}.jpg'))
+        
     def __len__(self):
         return len(self.render_view_images)
 
     def __getitem__(self, idx):
-        render_view_img = Image.open(self.render_view_images[idx])
-        base_color_img = Image.open(self.base_color_images[idx])
-        normal_img = Image.open(self.normal_images[idx])
+        # render_view_img = Image.open(self.render_view_images[idx])
+        # base_color_img = Image.open(self.base_color_images[idx])
+        # normal_img = Image.open(self.normal_images[idx])
+        render_view = cv2.imread(self.render_view_images[idx], 1) / 255
+        base_color = cv2.imread(self.base_color_images[idx], 1) / 255
+        normal = cv2.imread(self.normal_images[idx], 1)
+        normal = cv2.cvtColor(normal, cv2.COLOR_BGR2RGB)
+        normal = (normal / 255.0) * 2.0 - 1.0  # Normalize to [-1, 1]
         
-        # R: Metallic, G: Roughness, B: Unused
-        metallic_roughness_img = Image.open(self.metallic_roughness_images[idx])
-
-        mask_img = Image.open(self.mask_images[idx])
+        # B: Metallic, G: Roughness, R: Unused
+        # metallic_roughness = Image.open(self.metallic_roughness_images[idx])
+        metallic_roughness = cv2.imread(self.metallic_roughness_images[idx], 1) / 255
+        metallic = metallic_roughness[:, :, 0:1]
+        roughness = metallic_roughness[:, :, 1:2]
+        
+        # mask_img = Image.open(self.mask_images[idx])
+        mask = cv2.imread(self.mask_images[idx], 0) / 255
+        
+        recon_view = render(base_color, metallic, roughness, normal, np.array([0, 0, 1]), np.array([0, 0, 1]))
         
         if self.image_transform:
-            render_view_img = self.image_transform(render_view_img)
+            render_view = self.image_transform(render_view)
         
         if self.label_transform:
-            base_color_img = self.label_transform(base_color_img)
-            normal_img = self.label_transform(normal_img)
-            metallic_roughness_img = self.label_transform(metallic_roughness_img)
-            mask_img = self.label_transform(mask_img)
+            base_color = self.label_transform(base_color)
+            normal = self.label_transform(normal)
+            # metallic_roughness = self.label_transform(metallic_roughness)
+            metallic = self.label_transform(metallic)
+            roughness = self.label_transform(roughness)
+            mask = self.label_transform(mask)
+            recon_view = self.label_transform(recon_view)
             
-        return render_view_img, base_color_img, normal_img, metallic_roughness_img, mask_img
-
+        # return render_view, base_color, normal, metallic_roughness, mask
+        return render_view, base_color, normal, metallic, roughness, mask, recon_view
+    
 if __name__ == '__main__':
     root_dir = '../../datasets/abo-benchmark-material'
     hdr_image_list = create_hdr_image_list(root_dir)

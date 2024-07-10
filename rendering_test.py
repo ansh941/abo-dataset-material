@@ -7,6 +7,8 @@ import numpy as np
 import cv2
 from PIL import Image
 
+import torch
+
 def load_texture(file_path):
     texture = cv2.imread(file_path, cv2.IMREAD_COLOR)
     texture = cv2.cvtColor(texture, cv2.COLOR_BGR2RGB)
@@ -25,6 +27,7 @@ def load_normal(file_path):
     normal = (normal / 255.0) * 2.0 - 1.0  # Normalize to [-1, 1]
     return normal
 
+'''
 def render(base_color, metallic, roughness, normal, light_dir, view_dir):
     height, width, _ = base_color.shape
     result = np.zeros((height, width, 3))
@@ -64,7 +67,7 @@ def render(base_color, metallic, roughness, normal, light_dir, view_dir):
             result[y, x] = NdotL * (diffuse + specular)
     
     return np.clip(result, 0, 1)
-
+'''
 def load_environment_map(file_path):
     env_map = cv2.imread(file_path, cv2.IMREAD_COLOR | cv2.IMREAD_ANYDEPTH)
     env_map = cv2.cvtColor(env_map, cv2.COLOR_BGR2RGB)
@@ -150,41 +153,69 @@ def render(base_color, metallic, roughness, normal, light_dir, view_dir):
     result = np.zeros((height, width, 3))
 
     view_dir = view_dir / np.linalg.norm(view_dir)
-    
-    # Hemisphere sampling
-    num_samples = 512*512
-    np.random.seed(42)
-    samples = np.random.randn(num_samples, 3)
-    samples = samples / np.linalg.norm(samples, axis=1)[:, np.newaxis]
-    samples = samples[samples[:, 1] > 0]  # Keep only upper hemisphere
+    light_dir = light_dir / np.linalg.norm(light_dir)
     
     normal = normal / np.linalg.norm(normal, axis=2, keepdims=True)
     F0 = np.array([0.04, 0.04, 0.04]) * (1 - metallic) + base_color * metallic
     
-    total_light = np.zeros((height, width, 3))
+    l = light_dir
+    h = (view_dir + l) / np.linalg.norm(view_dir + l)
     
-    for sample in tqdm.tqdm(samples):
-        l = sample / np.linalg.norm(sample)
-        h = (view_dir + l) / np.linalg.norm(view_dir + l)
-        
-        NdotL = np.abs(np.sum(normal * l, axis=2, keepdims=True))
-        NdotV = np.abs(np.sum(normal * view_dir, axis=2, keepdims=True)) + 1e-5
-        NdotH = np.abs(np.sum(normal * h, axis=2, keepdims=True))
-        VdotH = np.abs(np.sum(view_dir * h, axis=0))
-        
-        F = F_Schlick(VdotH, F0, F90=1)
-        D = D_GGX(NdotH, roughness)
-        V = V_Smith_GGX_correlated_fast(NdotV, NdotL, roughness)
-        
-        specular = F * (D * V)
-        diffuse = (1 - F) * (1 / np.pi) * base_color
-        
-        env_light = sample_environment_map(env_map, l)
-        total_light += (NdotL * env_light) * (diffuse + specular)
+    NdotL = np.abs(np.sum(normal * l, axis=2, keepdims=True))
+    NdotV = np.abs(np.sum(normal * view_dir, axis=2, keepdims=True)) + 1e-5
+    NdotH = np.abs(np.sum(normal * h, axis=2, keepdims=True))
+    VdotH = np.abs(np.sum(view_dir * h, axis=0))
     
-    result = total_light / len(samples)
+    F = F_Schlick(VdotH, F0, F90=1)
+    D = D_GGX(NdotH, roughness)
+    G = G_GGX(NdotL, NdotV, roughness)
+    
+    specular = F * D * G / (4 * NdotL * NdotV + 1e-5)
+    diffuse = (1 - F) * (1 / np.pi) * base_color
+
+    result = NdotL * (diffuse + specular)
     
     return np.clip(result, 0, 1)
+
+def render_torch(base_color, metallic, roughness, normal, light_dir, view_dir, idx):
+    base_color = base_color.permute((0, 2, 3, 1))[idx]
+    normal = normal.permute((0, 2, 3, 1))[idx]
+    metallic = metallic.permute((0, 2, 3, 1))[idx]
+    roughness = roughness.permute((0, 2, 3, 1))[idx]
+    
+    height, width, _ = base_color.shape
+    result = torch.zeros((height, width, 3))
+
+    view_dir = view_dir / torch.norm(view_dir)
+    light_dir = light_dir / torch.norm(light_dir)
+    
+    normal = normal / torch.norm(normal, dim=2, keepdim=True)
+    F0 = torch.tensor([0.04, 0.04, 0.04]).cuda() * (1 - metallic) + base_color * metallic
+    
+    l = light_dir
+    h = (view_dir + l) / torch.norm(view_dir + l)
+    
+    NdotL = torch.abs(torch.sum(normal * l, dim=2, keepdim=True))
+    NdotV = torch.abs(torch.sum(normal * view_dir, dim=2, keepdim=True)) + 1e-5
+    NdotH = torch.abs(torch.sum(normal * h, dim=2, keepdim=True))
+    VdotH = torch.abs(torch.sum(view_dir * h, dim=0))
+    
+    # F = F_Schlick(VdotH, F0, F90=1)
+    # D = D_GGX(NdotH, roughness)
+    # G = G_GGX(NdotL, NdotV, roughness)
+    F = F0 + (1 - F0) * (1 - VdotH) ** 5
+    D = (roughness ** 2) / (np.pi * ((NdotH ** 2) * (roughness ** 2 - 1) + 1) ** 2)
+    k = (roughness + 1) ** 2 / 8
+    G = NdotL * NdotV / (NdotL * (1 - k) + k) / (NdotV * (1 - k) + k)
+    
+    specular = F * D * G / (4 * NdotL * NdotV + 1e-5)
+    diffuse = (1 - F) * (1 / torch.pi) * base_color
+
+    result = NdotL * (diffuse + specular)
+    
+    return torch.clamp(result, 0, 1)
+
+
 
 
 if __name__ == '__main__':
@@ -194,7 +225,7 @@ if __name__ == '__main__':
         if os.path.isdir(os.path.join(root_dir, model_id)):
             break
     
-    apply_env_map = True
+    apply_env_map = False
     idx = 17
     result_file_name = 'rendered_image'
     
@@ -209,6 +240,7 @@ if __name__ == '__main__':
     cv2.imwrite('base_color.png', (base_color * 255).astype(np.uint8))
     cv2.imwrite('normal.png', ((normal + 1) * 127.5).astype(np.uint8))
     cv2.imwrite('metallic.png', (metallic * 255).astype(np.uint8))
+    cv2.imwrite('roughness.png', (roughness * 255).astype(np.uint8))
     
     view_dir = np.array([0, 0, 1])  # 예: z 방향에서 보는 시점
     

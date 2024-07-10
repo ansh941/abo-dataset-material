@@ -151,7 +151,6 @@ class SVNetDecoder(nn.Module):
         conv_block_out = self.decoder_conv_block0(decoder_out1, encoder_feat0)
         out = self.conv_out(conv_block_out)
         
-        out = F.sigmoid(out)
         return out
 
 
@@ -174,7 +173,7 @@ class SVNet(nn.Module):
         metallic = self.metallic_decoder(encoder_feats)
         roughness = self.roughness_decoder(encoder_feats)
 
-        return base_color, normal, metallic, roughness
+        return F.sigmoid(base_color), F.tanh(normal), F.sigmoid(metallic), F.sigmoid(roughness)
 
 if __name__ == '__main__':
     svnet = SVNet().cuda()
