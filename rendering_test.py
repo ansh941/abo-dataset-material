@@ -110,8 +110,50 @@ def render_with_environment_map(base_color, metallic, roughness, normal, env_map
     view_dir = view_dir / np.linalg.norm(view_dir)
     
     # Hemisphere sampling
-    num_samples = 1024
-    # np.random.seed(42)
+    num_samples = 512*512
+    np.random.seed(42)
+    samples = np.random.randn(num_samples, 3)
+    samples = samples / np.linalg.norm(samples, axis=1)[:, np.newaxis]
+    samples = samples[samples[:, 1] > 0]  # Keep only upper hemisphere
+    
+    normal = normal / np.linalg.norm(normal, axis=2, keepdims=True)
+    F0 = np.array([0.04, 0.04, 0.04]) * (1 - metallic) + base_color * metallic
+    
+    total_light = np.zeros((height, width, 3))
+    
+    for sample in tqdm.tqdm(samples):
+        l = sample / np.linalg.norm(sample)
+        h = (view_dir + l) / np.linalg.norm(view_dir + l)
+        
+        NdotL = np.abs(np.sum(normal * l, axis=2, keepdims=True))
+        NdotV = np.abs(np.sum(normal * view_dir, axis=2, keepdims=True)) + 1e-5
+        NdotH = np.abs(np.sum(normal * h, axis=2, keepdims=True))
+        VdotH = np.abs(np.sum(view_dir * h, axis=0))
+        
+        F = F_Schlick(VdotH, F0, F90=1)
+        D = D_GGX(NdotH, roughness)
+        V = V_Smith_GGX_correlated_fast(NdotV, NdotL, roughness)
+        
+        specular = F * (D * V)
+        diffuse = (1 - F) * (1 / np.pi) * base_color
+        
+        env_light = sample_environment_map(env_map, l)
+        total_light += (NdotL * env_light) * (diffuse + specular)
+    
+    result = total_light / len(samples)
+    
+    return np.clip(result, 0, 1)
+
+
+def render(base_color, metallic, roughness, normal, light_dir, view_dir):
+    height, width, _ = base_color.shape
+    result = np.zeros((height, width, 3))
+
+    view_dir = view_dir / np.linalg.norm(view_dir)
+    
+    # Hemisphere sampling
+    num_samples = 512*512
+    np.random.seed(42)
     samples = np.random.randn(num_samples, 3)
     samples = samples / np.linalg.norm(samples, axis=1)[:, np.newaxis]
     samples = samples[samples[:, 1] > 0]  # Keep only upper hemisphere
