@@ -20,6 +20,7 @@ class DoubleConv(nn.Module):
     
     def forward(self, x):
         x = self.conv1(x)
+        print('x: ', torch.unique(x))
         x = self.bn1(x)
         x = self.act1(x)
         x = self.conv2(x)
