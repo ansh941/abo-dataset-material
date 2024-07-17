@@ -55,7 +55,8 @@ def visualize(render_view, base_color, normal, metallic, roughness, mask, recon_
 
 
 def rmse_loss_with_mask(pred, target, criterion, mask):
-    return torch.sum(torch.sqrt(criterion(pred, target) * mask)) / torch.count_nonzero(mask)
+    criterion = nn.MSELoss(reduction='mean')
+    return torch.sqrt(criterion(pred*mask, target*mask))
 
 def train(vis=False):
     # Set seed
@@ -94,7 +95,7 @@ def train(vis=False):
     # Set loss function and optimizer
     # criterion = nn.CrossEntropyLoss()
     criterion = nn.MSELoss(reduction='none')
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
     
     # Set TensorBoard
     writer = tensorboardX.SummaryWriter()
@@ -107,6 +108,7 @@ def train(vis=False):
     for epoch in range(num_epochs):
         total_loss = 0
         progress_bar = tqdm.tqdm(range(len(train_loader)))
+        model.train()
         for i, (render_view, base_color, normal, metallic, roughness, mask, recon_view) in enumerate(train_loader):
             optimizer.zero_grad()
             render_view = render_view.to(device).float()
@@ -117,11 +119,11 @@ def train(vis=False):
             mask = mask.to(device).float()
             recon_view = recon_view.to(device).float()
             
-            base_color = base_color*mask
-            normal = normal*mask
-            metallic = metallic*mask
-            roughness = roughness*mask
-            recon_view = recon_view*mask
+            # base_color = base_color*mask
+            # normal = normal*mask
+            # metallic = metallic*mask
+            # roughness = roughness*mask
+            # recon_view = recon_view*mask
             
             # Forward pass
             base_color_pred, normal_pred, metallic_pred, roughness_pred = model(render_view)
@@ -142,8 +144,8 @@ def train(vis=False):
             recon_view_pred = recon_view_pred.permute(0, 3, 1, 2)
 
             # Compute loss
-            mask = torch.where(mask > 0.5, mask, 0)
-            nonzeros = torch.count_nonzero(mask)
+            mask = torch.where(mask > 0.5, mask, 1e-6)
+            # print(torch.count_nonzero(mask))
             base_color_loss = rmse_loss_with_mask(base_color_pred, base_color, criterion, mask)
             normal_loss = rmse_loss_with_mask(normal_pred, normal, criterion, mask)
             metallic_loss = rmse_loss_with_mask(metallic_pred, metallic, criterion, mask)
@@ -151,6 +153,7 @@ def train(vis=False):
             rendering_loss = rmse_loss_with_mask(recon_view_pred, recon_view, criterion, mask)
             loss = (base_color_loss + normal_loss + metallic_loss + roughness_loss + rendering_loss)/5
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 5)
             optimizer.step()
             
             total_loss += loss.item()
