@@ -119,12 +119,6 @@ def train(vis=False):
             mask = mask.to(device).float()
             recon_view = recon_view.to(device).float()
             
-            # base_color = base_color*mask
-            # normal = normal*mask
-            # metallic = metallic*mask
-            # roughness = roughness*mask
-            # recon_view = recon_view*mask
-            
             # Forward pass
             base_color_pred, normal_pred, metallic_pred, roughness_pred = model(render_view)
             
@@ -145,7 +139,6 @@ def train(vis=False):
 
             # Compute loss
             mask = torch.where(mask > 0.5, mask, 1e-6)
-            # print(torch.count_nonzero(mask))
             base_color_loss = rmse_loss_with_mask(base_color_pred, base_color, criterion, mask)
             normal_loss = rmse_loss_with_mask(normal_pred, normal, criterion, mask)
             metallic_loss = rmse_loss_with_mask(metallic_pred, metallic, criterion, mask)
@@ -183,31 +176,31 @@ def train(vis=False):
                 mask = mask.to(device).float()
                 recon_view = recon_view.to(device).float()
                 
-                base_color = base_color*mask
-                normal = normal*mask
-                metallic = metallic*mask
-                roughness = roughness*mask
-                recon_view = recon_view*mask
-                
                 # Forward pass
                 base_color_pred, normal_pred, metallic_pred, roughness_pred = model(render_view)
-                base_color_pred = F.interpolate(base_color_pred, size=(512, 512), mode='bilinear', align_corners=False)
-                normal_pred = F.interpolate(normal_pred, size=(512, 512), mode='bilinear', align_corners=False)
-                metallic_pred = F.interpolate(metallic_pred, size=(512, 512), mode='bilinear', align_corners=False)
-                roughness_pred = F.interpolate(roughness_pred, size=(512, 512), mode='bilinear', align_corners=False)
                 
+                size = base_color_pred.shape[-2:]
+                render_view = F.interpolate(render_view, size=size, mode='bilinear', align_corners=False)
+                base_color = F.interpolate(base_color, size=size, mode='bilinear', align_corners=False)
+                normal = F.interpolate(normal, size=size, mode='bilinear', align_corners=False)
+                metallic = F.interpolate(metallic, size=size, mode='bilinear', align_corners=False)
+                roughness = F.interpolate(roughness, size=size, mode='bilinear', align_corners=False)
+                mask = F.interpolate(mask, size=size, mode='bilinear', align_corners=False)
+                recon_view = F.interpolate(recon_view, size=size, mode='bilinear', align_corners=False)
+
                 # Rendering
-                recon_view_pred = torch.zeros((base_color_pred.shape[0], 512, 512, 3), device=device).float()
+                recon_view_pred = torch.zeros((base_color_pred.shape[0], size[0], size[1], 3), device=device).float()
                 for idx in range(len(base_color_pred)):
                     recon_view_pred[idx] = render_torch(base_color_pred, metallic_pred, roughness_pred, normal_pred, light_dir, view_dir, idx)
                 recon_view_pred = recon_view_pred.permute(0, 3, 1, 2)
-                
+
                 # Compute loss
-                base_color_loss = torch.sqrt(criterion(base_color_pred, base_color))
-                normal_loss = torch.sqrt(criterion(normal_pred, normal))
-                metallic_loss = torch.sqrt(criterion(metallic_pred, metallic))
-                roughness_loss = torch.sqrt(criterion(roughness_pred, roughness))
-                rendering_loss = torch.sqrt(criterion(recon_view_pred, recon_view))
+                mask = torch.where(mask > 0.5, mask, 1e-6)
+                base_color_loss = rmse_loss_with_mask(base_color_pred, base_color, criterion, mask)
+                normal_loss = rmse_loss_with_mask(normal_pred, normal, criterion, mask)
+                metallic_loss = rmse_loss_with_mask(metallic_pred, metallic, criterion, mask)
+                roughness_loss = rmse_loss_with_mask(roughness_pred, roughness, criterion, mask)
+                rendering_loss = rmse_loss_with_mask(recon_view_pred, recon_view, criterion, mask)
                 loss = (base_color_loss + normal_loss + metallic_loss + roughness_loss + rendering_loss)/5
                 
                 val_loss += loss.item()
