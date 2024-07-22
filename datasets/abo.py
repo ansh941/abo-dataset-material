@@ -46,17 +46,17 @@ class SVABOMaterialDataset(Dataset):
         # Load file that contains the indices of the render views to be used for each env map
         if train:
             with open(os.path.join(self.root_dir, 'train_sample_idx.json'), 'r') as f:
-                train_sample_idx = json.load(f)
+                sample_idx = json.load(f)
         else:
             with open(os.path.join(self.root_dir, 'test_sample_idx.json'), 'r') as f:
-                train_sample_idx = json.load(f)
+                sample_idx = json.load(f)
         
         self.render_view_images = []
         self.base_color_images = []
         self.normal_images = []
         self.metallic_roughness_images = []
         self.mask_images = []
-        for model_id, env_map_ids in train_sample_idx.items():
+        for model_id, env_map_ids in sample_idx.items():
             for env_map_id, render_view_ids in env_map_ids.items():
                 for render_view_id in render_view_ids:
                     self.render_view_images.append(os.path.join(self.root_dir, model_id, 'render', env_map_id, f'render_{render_view_id}.jpg'))
@@ -69,9 +69,6 @@ class SVABOMaterialDataset(Dataset):
         return len(self.render_view_images)
 
     def __getitem__(self, idx):
-        # render_view_img = Image.open(self.render_view_images[idx])
-        # base_color_img = Image.open(self.base_color_images[idx])
-        # normal_img = Image.open(self.normal_images[idx])
         render_view = cv2.imread(self.render_view_images[idx], 1) / 255
         base_color = cv2.imread(self.base_color_images[idx], 1) / 255
         normal = cv2.imread(self.normal_images[idx], 1)
@@ -84,7 +81,6 @@ class SVABOMaterialDataset(Dataset):
         metallic = metallic_roughness[:, :, 0:1]
         roughness = metallic_roughness[:, :, 1:2]
         
-        # mask_img = Image.open(self.mask_images[idx])
         mask = cv2.imread(self.mask_images[idx], 0) / 255
         
         recon_view = render(base_color, metallic, roughness, normal, np.array([0, 0, 1]), np.array([0, 0, 1]))
@@ -95,13 +91,11 @@ class SVABOMaterialDataset(Dataset):
         if self.label_transform:
             base_color = self.label_transform(base_color)
             normal = self.label_transform(normal)
-            # metallic_roughness = self.label_transform(metallic_roughness)
             metallic = self.label_transform(metallic)
             roughness = self.label_transform(roughness)
             mask = self.label_transform(mask)
             recon_view = self.label_transform(recon_view)
             
-        # return render_view, base_color, normal, metallic_roughness, mask
         return render_view, base_color, normal, metallic, roughness, mask, recon_view
     
 if __name__ == '__main__':

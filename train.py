@@ -87,7 +87,7 @@ def train(vis=False):
     train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True)
     
     test_dataset = SVABOMaterialDataset(root_dir='../../datasets/abo-benchmark-material', image_transform=image_transform, label_transform=label_transform, train=False)
-    test_loader = DataLoader(dataset=test_dataset, batch_size=batch_size, shuffle=False)
+    test_loader = DataLoader(dataset=test_dataset, batch_size=batch_size*4, shuffle=False)
     
     # Set model
     model = SVNet(activation='relu').to(device)
@@ -105,9 +105,10 @@ def train(vis=False):
     
     # Train the model
     total_step = len(train_loader)
+    val_losses = [np.inf]
     for epoch in range(num_epochs):
         total_loss = 0
-        progress_bar = tqdm.tqdm(range(len(train_loader)))
+        progress_bar = tqdm.tqdm(range(len(train_dataset)))
         model.train()
         for i, (render_view, base_color, normal, metallic, roughness, mask, recon_view) in enumerate(train_loader):
             optimizer.zero_grad()
@@ -163,10 +164,9 @@ def train(vis=False):
         
         # Evaluation
         model.eval()
-        val_losses = []
         with torch.no_grad():
             val_loss = 0
-            progress_bar = tqdm.tqdm(range(len(test_loader)))
+            progress_bar = tqdm.tqdm(range(len(test_dataset)))
             for i, (render_view, base_color, normal, metallic, roughness, mask, recon_view) in enumerate(test_loader):
                 render_view = render_view.to(device).float()
                 base_color = base_color.to(device).float()
@@ -210,8 +210,8 @@ def train(vis=False):
             print('Test - Epoch [{}/{}] Test Loss: {:.4f}'.format(epoch+1, num_epochs, val_loss))
             writer.add_scalar('Loss/test', val_loss, epoch)
             
-            if val_losses[-1] > val_loss:
-                torch.save(model.state_dict(), f'model_{epoch+1}_{val_loss}.pth')
-            val_losses.append(val_loss)
+        if val_losses[-1] > val_loss:
+            torch.save(model.state_dict(), f'model_{epoch+1}_{val_loss}.pth')
+        val_losses.append(val_loss)
 
 train(True)
