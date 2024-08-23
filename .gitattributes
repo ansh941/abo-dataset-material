@@ -1,1 +1,2 @@
+pretrained/svnet.pth filter=lfs diff=lfs merge=lfs -text
 pretrained/* filter=lfs diff=lfs merge=lfs -text
