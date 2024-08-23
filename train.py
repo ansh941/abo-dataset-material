@@ -14,8 +14,8 @@ from torchvision import transforms
 from datasets.abo import SVABOMaterialDataset
 from models.svnet import SVNet
 
-from utils import visualize, seed_everything
-from loss import rmse_loss_with_mask
+from utils import visualize, seed_everything, align_size
+from loss import compute_loss
 from rendering_test import render_torch
 
 def train(vis=False):
@@ -84,13 +84,7 @@ def train(vis=False):
             base_color_pred, normal_pred, metallic_pred, roughness_pred = model(render_view)
             
             size = base_color_pred.shape[-2:]
-            render_view = F.interpolate(render_view, size=size, mode='bilinear', align_corners=False)
-            base_color = F.interpolate(base_color, size=size, mode='bilinear', align_corners=False)
-            normal = F.interpolate(normal, size=size, mode='bilinear', align_corners=False)
-            metallic = F.interpolate(metallic, size=size, mode='bilinear', align_corners=False)
-            roughness = F.interpolate(roughness, size=size, mode='bilinear', align_corners=False)
-            mask = F.interpolate(mask, size=size, mode='bilinear', align_corners=False)
-            recon_view = F.interpolate(recon_view, size=size, mode='bilinear', align_corners=False)
+            render_view, base_color, normal, metallic, roughness, mask, recon_view = align_size(size, render_view, base_color, normal, metallic, roughness, mask, recon_view)
 
             # Rendering
             recon_view_pred = torch.zeros((base_color_pred.shape[0], size[0], size[1], 3), device=device).float()
@@ -99,13 +93,22 @@ def train(vis=False):
             recon_view_pred = recon_view_pred.permute(0, 3, 1, 2)
 
             # Compute loss
-            mask = torch.where(mask > 0.5, mask, 1e-6)
-            base_color_loss = rmse_loss_with_mask(base_color_pred, base_color, criterion, mask)
-            normal_loss = rmse_loss_with_mask(normal_pred, normal, criterion, mask)
-            metallic_loss = rmse_loss_with_mask(metallic_pred, metallic, criterion, mask)
-            roughness_loss = rmse_loss_with_mask(roughness_pred, roughness, criterion, mask)
-            rendering_loss = rmse_loss_with_mask(recon_view_pred, recon_view, criterion, mask)
-            loss = (base_color_loss + normal_loss + metallic_loss + roughness_loss + rendering_loss)/5
+            loss_fn_args = {
+                'base_color': base_color,
+                'normal': normal,
+                'metallic': metallic,
+                'roughness': roughness,
+                'recon_view': recon_view,
+                'base_color_pred': base_color_pred,
+                'normal_pred': normal_pred,
+                'metallic_pred': metallic_pred,
+                'roughness_pred': roughness_pred,
+                'recon_view_pred': recon_view_pred,
+                'mask': mask,
+                'criterion': criterion
+            }
+            (loss, base_color_loss, normal_loss, metallic_loss, roughness_loss, rendering_loss, normal_cos) = compute_loss(**loss_fn_args)
+            
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 5)
             optimizer.step()
@@ -115,9 +118,25 @@ def train(vis=False):
                 print('Train - Epoch [{}/{}], Step [{}/{}], Loss: {:.4f}'.format(epoch+1, num_epochs, i+1, total_step, loss.item()))
                 # Visualization
                 if vis:
-                    visualize(render_view, base_color, normal, metallic, roughness, mask, recon_view,
-                            base_color_pred, normal_pred, metallic_pred, roughness_pred, recon_view_pred,
-                            mean, std)
+                    visualize_fn_args = {
+                        'render_view': render_view,
+                        'base_color_pred': base_color_pred,
+                        'normal_pred': normal_pred,
+                        'metallic_pred': metallic_pred,
+                        'roughness_pred': roughness_pred,
+                        'recon_view_pred': recon_view_pred,
+                        'mean': mean,
+                        'std': std,
+                        'index': 0,
+                        'with_gt': True,
+                        'base_color': base_color,
+                        'normal': normal,
+                        'metallic': metallic,
+                        'roughness': roughness,
+                        'mask': mask,
+                        'recon_view': recon_view
+                    }
+                    visualize(**visualize_fn_args)
             progress_bar.update(len(render_view))
         total_loss = total_loss / len(train_loader)
         writer.add_scalar('Loss/train', total_loss, epoch)
@@ -140,13 +159,7 @@ def train(vis=False):
                 base_color_pred, normal_pred, metallic_pred, roughness_pred = model(render_view)
                 
                 size = base_color_pred.shape[-2:]
-                render_view = F.interpolate(render_view, size=size, mode='bilinear', align_corners=False)
-                base_color = F.interpolate(base_color, size=size, mode='bilinear', align_corners=False)
-                normal = F.interpolate(normal, size=size, mode='bilinear', align_corners=False)
-                metallic = F.interpolate(metallic, size=size, mode='bilinear', align_corners=False)
-                roughness = F.interpolate(roughness, size=size, mode='bilinear', align_corners=False)
-                mask = F.interpolate(mask, size=size, mode='bilinear', align_corners=False)
-                recon_view = F.interpolate(recon_view, size=size, mode='bilinear', align_corners=False)
+                render_view, base_color, normal, metallic, roughness, mask, recon_view = align_size(size, render_view, base_color, normal, metallic, roughness, mask, recon_view)
 
                 # Rendering
                 recon_view_pred = torch.zeros((base_color_pred.shape[0], size[0], size[1], 3), device=device).float()
@@ -155,13 +168,21 @@ def train(vis=False):
                 recon_view_pred = recon_view_pred.permute(0, 3, 1, 2)
 
                 # Compute loss
-                mask = torch.where(mask > 0.5, mask, 1e-6)
-                base_color_loss = rmse_loss_with_mask(base_color_pred, base_color, criterion, mask)
-                normal_loss = rmse_loss_with_mask(normal_pred, normal, criterion, mask)
-                metallic_loss = rmse_loss_with_mask(metallic_pred, metallic, criterion, mask)
-                roughness_loss = rmse_loss_with_mask(roughness_pred, roughness, criterion, mask)
-                rendering_loss = rmse_loss_with_mask(recon_view_pred, recon_view, criterion, mask)
-                loss = (base_color_loss + normal_loss + metallic_loss + roughness_loss + rendering_loss)/5
+                loss_fn_args = {
+                    'base_color': base_color,
+                    'normal': normal,
+                    'metallic': metallic,
+                    'roughness': roughness,
+                    'recon_view': recon_view,
+                    'base_color_pred': base_color_pred,
+                    'normal_pred': normal_pred,
+                    'metallic_pred': metallic_pred,
+                    'roughness_pred': roughness_pred,
+                    'recon_view_pred': recon_view_pred,
+                    'mask': mask,
+                    'criterion': criterion
+                }
+                (loss, base_color_loss, normal_loss, metallic_loss, roughness_loss, rendering_loss, normal_cos) = compute_loss(**loss_fn_args)
                 
                 val_loss += loss.item()
                 progress_bar.update(len(render_view))
@@ -170,7 +191,7 @@ def train(vis=False):
             print('Test - Epoch [{}/{}] Test Loss: {:.4f}'.format(epoch+1, num_epochs, val_loss))
             writer.add_scalar('Loss/test', val_loss, epoch)
             
-        if val_losses[-1] > val_loss:
+        if min(val_losses) > val_loss:
             torch.save(model.state_dict(), f'model_{epoch+1}_{val_loss}.pth')
         val_losses.append(val_loss)
 
