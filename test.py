@@ -17,6 +17,9 @@ def test(image_path, model_path='pretrained/svnet.pth'):
     # Set device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
+    # Set hyperparameters
+    batch_size = 16
+    
     mean = torch.tensor([0.485, 0.456, 0.406]).to(device).reshape(1,3,1,1)
     std = torch.tensor([0.229, 0.224, 0.225]).to(device).reshape(1,3,1,1)
     
@@ -38,7 +41,7 @@ def test(image_path, model_path='pretrained/svnet.pth'):
     with torch.no_grad():
         render_view = cv2.imread(image_path, 1) / 255
         
-        render_view = image_transform(render_view).float().to(device).unsqueeze(0)
+        render_view = image_transform(render_view)
 
         # Forward pass
         base_color_pred, normal_pred, metallic_pred, roughness_pred = model(render_view)
