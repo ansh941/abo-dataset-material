@@ -10,9 +10,10 @@ from torchvision import transforms
 from datasets.abo import SVABOMaterialDataset
 from models.svnet import SVNet
 
-from utils import visualize, seed_everything
-from loss import rmse_loss_with_mask
+from utils import visualize, seed_everything, align_size
+from loss import compute_loss
 from rendering_test import render_torch
+
 
 def evaluation(model_path='pretrained/svnet.pth'):
     seed_everything(42)
@@ -49,11 +50,16 @@ def evaluation(model_path='pretrained/svnet.pth'):
     light_dir = torch.tensor([0,0,1]).to(device).float()
     view_dir = torch.tensor([0,0,1]).to(device).float()
     
-    
     # Evaluation
     model.eval()
     with torch.no_grad():
         val_loss = 0
+        base_color_rmse = 0
+        metallic_rmse = 0
+        roughness_rmse = 0
+        rendering_rmse = 0
+        normal_cosine = 0
+        
         progress_bar = tqdm.tqdm(range(len(test_dataset)))
         for i, (render_view, base_color, normal, metallic, roughness, mask, recon_view) in enumerate(test_loader):
             render_view = render_view.to(device).float()
@@ -68,13 +74,7 @@ def evaluation(model_path='pretrained/svnet.pth'):
             base_color_pred, normal_pred, metallic_pred, roughness_pred = model(render_view)
             
             size = base_color_pred.shape[-2:]
-            render_view = F.interpolate(render_view, size=size, mode='bilinear', align_corners=False)
-            base_color = F.interpolate(base_color, size=size, mode='bilinear', align_corners=False)
-            normal = F.interpolate(normal, size=size, mode='bilinear', align_corners=False)
-            metallic = F.interpolate(metallic, size=size, mode='bilinear', align_corners=False)
-            roughness = F.interpolate(roughness, size=size, mode='bilinear', align_corners=False)
-            mask = F.interpolate(mask, size=size, mode='bilinear', align_corners=False)
-            recon_view = F.interpolate(recon_view, size=size, mode='bilinear', align_corners=False)
+            render_view, base_color, normal, metallic, roughness, mask, recon_view = align_size(size, render_view, base_color, normal, metallic, roughness, mask, recon_view)
 
             # Rendering
             recon_view_pred = torch.zeros((base_color_pred.shape[0], size[0], size[1], 3), device=device).float()
@@ -83,23 +83,66 @@ def evaluation(model_path='pretrained/svnet.pth'):
             recon_view_pred = recon_view_pred.permute(0, 3, 1, 2)
 
             # Compute loss
-            mask = torch.where(mask > 0.5, mask, 1e-6)
-            base_color_loss = rmse_loss_with_mask(base_color_pred, base_color, criterion, mask)
-            normal_loss = rmse_loss_with_mask(normal_pred, normal, criterion, mask)
-            metallic_loss = rmse_loss_with_mask(metallic_pred, metallic, criterion, mask)
-            roughness_loss = rmse_loss_with_mask(roughness_pred, roughness, criterion, mask)
-            rendering_loss = rmse_loss_with_mask(recon_view_pred, recon_view, criterion, mask)
-            loss = (base_color_loss + normal_loss + metallic_loss + roughness_loss + rendering_loss)/5
+            loss_fn_args = {
+                'base_color': base_color,
+                'normal': normal,
+                'metallic': metallic,
+                'roughness': roughness,
+                'recon_view': recon_view,
+                'base_color_pred': base_color_pred,
+                'normal_pred': normal_pred,
+                'metallic_pred': metallic_pred,
+                'roughness_pred': roughness_pred,
+                'recon_view_pred': recon_view_pred,
+                'mask': mask,
+                'criterion': criterion
+            }
+            (loss, base_color_loss, normal_loss, metallic_loss, roughness_loss, rendering_loss, normal_cos) = compute_loss(**loss_fn_args)
             
             val_loss += loss.item()
+            base_color_rmse += base_color_loss.item()
+            metallic_rmse += metallic_loss.item()
+            roughness_rmse += roughness_loss.item()
+            rendering_rmse += rendering_loss.item()
+            normal_cosine += normal_cos.item()
+            
+            visualize_fn_args = {
+                'render_view': render_view,
+                'base_color_pred': base_color_pred,
+                'normal_pred': normal_pred,
+                'metallic_pred': metallic_pred,
+                'roughness_pred': roughness_pred,
+                'recon_view_pred': recon_view_pred,
+                'mean': mean,
+                'std': std,
+                'index': 0,
+                'with_gt': True,
+                'base_color': base_color,
+                'normal': normal,
+                'metallic': metallic,
+                'roughness': roughness,
+                'mask': mask,
+                'recon_view': recon_view
+            }
+            visualize(**visualize_fn_args)
+            
             progress_bar.update(len(render_view))
             
         val_loss = val_loss / len(test_loader)
-        print('Test Loss: {:.4f}'.format(val_loss))
+        base_color_rmse = base_color_rmse / len(test_loader)
+        metallic_rmse = metallic_rmse / len(test_loader)
+        roughness_rmse = roughness_rmse / len(test_loader)
+        rendering_rmse = rendering_rmse / len(test_loader)
+        normal_cosine = normal_cosine / len(test_loader)
         
-        visualize(render_view, base_color, normal, metallic, roughness, mask, recon_view,
-                            base_color_pred, normal_pred, metallic_pred, roughness_pred, recon_view_pred,
-                            mean, std)
-
+        print('Test Loss: {:.4f}'.format(val_loss))
+        print('Base Color RMSE: {:.4f}'.format(base_color_rmse))
+        print('Metallic RMSE: {:.4f}'.format(metallic_rmse))
+        print('Roughness RMSE: {:.4f}'.format(roughness_rmse))
+        print('Rendering RMSE: {:.4f}'.format(rendering_rmse))
+        print('Normal Cosine Similarity: {:.4f}'.format(normal_cosine))
+        
+        return val_loss
+        
 if __name__ == '__main__':
     evaluation(model_path='pretrained/svnet.pth')
