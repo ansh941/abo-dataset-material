@@ -33,4 +33,5 @@ Paper column is the metric value written in paper.
 | Rendering ($\downarrow$)  | RMSE              | 0.0163 | 0.096 |
 
 # Result Image
-![Uploading Untitled.jpeg…]()
+
+![example_image](https://github.com/user-attachments/assets/4599698b-9363-4821-a69f-3a96997635ac)
