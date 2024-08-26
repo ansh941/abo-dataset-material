@@ -11,12 +11,12 @@ Rendering uses GGX referenced by [Khronos GLTS2.0 Spec](https://registry.khronos
 1. Open the model and training code
 2. open evaluation code
 3. Train SVNet and open SVNet weight
+4. Upload evaluation result images
 
 # Processing tasks
 
-1. Clean the code
+1. Organize the code
 2. MV dataset Class
-3. Upload evaluation result images
 
 # Evaluation
 
@@ -31,3 +31,6 @@ Paper column is the metric value written in paper.
 | Metallic ($\downarrow$)   | RMSE              | 0.0739 | 0.170 |
 | Normal ($\uparrow$)       | Cosine Similarity | 0.9425 | 0.970 |
 | Rendering ($\downarrow$)  | RMSE              | 0.0163 | 0.096 |
+
+# Result Image
+![Uploading Untitled.jpeg…]()
