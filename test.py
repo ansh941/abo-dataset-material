@@ -71,4 +71,4 @@ def test(image_path, model_path='pretrained/svnet.pth'):
         visualize(**visualize_fn_args)
 
 if __name__ == '__main__':
-    test(image_path='/home/ash/Desktop/datasets/abo-benchmark-material/B07MF1SFKD/render/0/render_0.jpg', model_path='pretrained/svnet.pth')
+    test(image_path='example/render_0.jpg', model_path='pretrained/svnet.pth')
