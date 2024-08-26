@@ -12,7 +12,7 @@ from models.svnet import SVNet
 
 from utils import visualize, seed_everything, align_size
 from loss import compute_loss
-from rendering_test import render_torch
+from rendering import render_torch
 
 
 def evaluation(model_path='pretrained/svnet.pth'):
@@ -125,7 +125,7 @@ def evaluation(model_path='pretrained/svnet.pth'):
                 'recon_view': recon_view
             }
             visualize(**visualize_fn_args)
-            
+        
             progress_bar.update(len(render_view))
             
         val_loss = val_loss / len(test_loader)

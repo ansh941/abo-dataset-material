@@ -8,7 +8,7 @@ from torchvision import transforms
 
 from models.svnet import SVNet
 from utils import seed_everything, align_size
-from rendering_test import render_torch
+from rendering import render_torch
 from utils import visualize
 
 def test(image_path, model_path='pretrained/svnet.pth'):
@@ -41,8 +41,9 @@ def test(image_path, model_path='pretrained/svnet.pth'):
     with torch.no_grad():
         render_view = cv2.imread(image_path, 1) / 255
         
-        render_view = image_transform(render_view)
-
+        render_view = image_transform(render_view).float().to(device)
+        render_view = render_view.unsqueeze(0)
+        
         # Forward pass
         base_color_pred, normal_pred, metallic_pred, roughness_pred = model(render_view)
         
@@ -71,4 +72,4 @@ def test(image_path, model_path='pretrained/svnet.pth'):
         visualize(**visualize_fn_args)
 
 if __name__ == '__main__':
-    test(image_path='example/render_0.jpg', model_path='pretrained/svnet.pth')
+    test(image_path='your_image_path', model_path='pretrained/svnet.pth')

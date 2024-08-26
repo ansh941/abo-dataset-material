@@ -16,7 +16,7 @@ import torchvision.transforms as transforms
 import cv2
 from PIL import Image
 
-from rendering_test import render
+from rendering import render
 
 def create_hdr_image_list(root_dir):
     hdr_image_list = []

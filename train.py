@@ -16,7 +16,7 @@ from models.svnet import SVNet
 
 from utils import visualize, seed_everything, align_size
 from loss import compute_loss
-from rendering_test import render_torch
+from rendering import render_torch
 
 def train(vis=False):
     # Set seed
